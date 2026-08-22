@@ -1,14 +1,6 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  Alert,
-  Pressable,
-  PressableProps,
-} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, ScrollView, Alert, Pressable, PressableProps } from 'react-native';
 import { Card, Button } from '@/components/ui';
 import { useAuthUser, useAuth } from '@/components/providers/AuthProvider';
 import { Link } from 'expo-router';
