@@ -1,4 +1,5 @@
 import React from 'react';
+import { Platform } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './AuthProvider';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
@@ -18,7 +19,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>{children}</AuthProvider>
-      <ReactQueryDevtools initialIsOpen={false} />
+      {Platform.OS === 'web' && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>
   );
 }
