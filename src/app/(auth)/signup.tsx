@@ -56,8 +56,7 @@ export default function SignupScreen() {
     return true;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     setError(null);
 
     if (!validateForm()) return;
@@ -87,71 +86,66 @@ export default function SignupScreen() {
         </View>
 
         <Card style={styles.formCard} padding="lg">
-          <form onSubmit={handleSubmit}>
-            <Input
-              label="Username"
-              placeholder="john_rider"
-              value={username}
-              onChangeText={setUsername}
-              autoCapitalize="none"
-              autoComplete="username"
-              textContentType="username"
-              error={error}
-            />
+          <Input
+            label="Username"
+            placeholder="john_rider"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+            autoComplete="username"
+            textContentType="username"
+          />
 
-            <Input
-              label="Email"
-              placeholder="you@example.com"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-              textContentType="emailAddress"
-              style={styles.inputSpacing}
-              error={error}
-            />
+          <Input
+            label="Email"
+            placeholder="you@example.com"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            textContentType="emailAddress"
+            style={styles.inputSpacing}
+          />
 
-            <Input
-              label="Password"
-              placeholder="••••••••"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              autoComplete="new-password"
-              textContentType="newPassword"
-              helperText="At least 8 characters"
-              style={styles.inputSpacing}
-              error={error}
-            />
+          <Input
+            label="Password"
+            placeholder="••••••••"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoComplete="new-password"
+            textContentType="newPassword"
+            helperText="At least 8 characters"
+            style={styles.inputSpacing}
+          />
 
-            <Input
-              label="Confirm Password"
-              placeholder="••••••••"
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              secureTextEntry
-              autoComplete="new-password"
-              textContentType="newPassword"
-              style={styles.inputSpacing}
-              error={error}
-            />
+          <Input
+            label="Confirm Password"
+            placeholder="••••••••"
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            secureTextEntry
+            autoComplete="new-password"
+            textContentType="newPassword"
+            style={styles.inputSpacing}
+          />
 
-            {error && (
-              <View style={styles.errorContainer}>
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
-            )}
+          {error && (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          )}
 
-            <Button
-              title="Create Account"
-              fullWidth
-              size="lg"
-              loading={loading}
-              disabled={loading}
-              style={styles.submitButton}
-            />
-          </form>
+          <Button
+            title="Create Account"
+            fullWidth
+            size="lg"
+            loading={loading}
+            disabled={loading}
+            onPress={handleSubmit}
+            style={styles.submitButton}
+          />
         </Card>
 
         <View style={styles.footer}>
