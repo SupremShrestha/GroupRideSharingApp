@@ -18,28 +18,21 @@ export default function JoinGroupScreen() {
     mutationFn: async () => {
       if (!user) throw new Error('Not signed in');
 
-      const { data: group, error: findError } = await supabase
-        .from('groups')
-        .select('id, name')
-        .eq('invite_code', code.trim().toUpperCase())
-        .single();
+      const { data, error } = await supabase.rpc('join_group_with_code', {
+        _invite_code: code.trim(),
+      });
 
-      if (findError || !group) {
-        throw new Error('Invalid invite code');
-      }
-
-      const { error: joinError } = await supabase
-        .from('group_members')
-        .insert({ group_id: group.id, user_id: user.id, role: 'member' });
-
-      if (joinError) {
-        if (joinError.code === '23505') {
+      if (error) {
+        if (error.code === '23505') {
           throw new Error("You're already a member of this group");
         }
-        throw joinError;
+        if (error.message.includes('Invalid invite code')) {
+          throw new Error('Invalid invite code');
+        }
+        throw error;
       }
 
-      return group;
+      return data;
     },
     onSuccess: group => {
       queryClient.invalidateQueries({ queryKey: ['groups'] });
