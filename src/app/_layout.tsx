@@ -4,6 +4,7 @@ import { View, ActivityIndicator } from 'react-native';
 import { Providers } from '@/components/providers/Providers';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useAuthUser, useAuthInitialized } from '@/components/providers/AuthProvider';
+import '@/lib/mapbox';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const user = useAuthUser();

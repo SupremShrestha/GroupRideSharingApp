@@ -23,7 +23,17 @@ export default {
     web: {
       favicon: './assets/favicon.png',
     },
-    plugins: ['expo-router', '@rnmapbox/maps'],
+    plugins: [
+      'expo-router',
+      '@rnmapbox/maps',
+      [
+        'expo-location',
+        {
+          locationAlwaysAndWhenInUsePermission:
+            'Allow $(PRODUCT_NAME) to use your location to show it on the ride map.',
+        },
+      ],
+    ],
     extra: {
       eas: {
         projectId: '385b3107-d643-4f06-9ac5-f54dfc15ce58',
