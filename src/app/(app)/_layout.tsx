@@ -78,6 +78,7 @@ export default function AppLayout() {
           ),
         }}
       />
+      <Tabs.Screen name="ride" options={{ href: null }} />
     </Tabs>
   );
 }

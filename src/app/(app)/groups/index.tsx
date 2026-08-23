@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, Button } from '@/components/ui';
 import { Link } from 'expo-router';
@@ -82,9 +82,9 @@ export default function GroupsScreen() {
           </>
         }
         renderItem={({ item }) => (
-          <Card style={styles.groupCard} padding="md">
-            <Link href={`/(app)/groups/${item.id}`} asChild>
-              <View>
+          <Link href={`/(app)/groups/${item.id}`} asChild>
+            <Pressable>
+              <Card style={styles.groupCard} padding="md">
                 <View style={styles.groupRow}>
                   <Text style={styles.groupName}>{item.name}</Text>
                   {item.role === 'admin' && (
@@ -97,9 +97,9 @@ export default function GroupsScreen() {
                   {item.member_count} {item.member_count === 1 ? 'member' : 'members'} · Code:{' '}
                   {item.invite_code}
                 </Text>
-              </View>
-            </Link>
-          </Card>
+              </Card>
+            </Pressable>
+          </Link>
         )}
         ListEmptyComponent={
           !isLoading ? (
@@ -108,7 +108,7 @@ export default function GroupsScreen() {
                 <Text style={styles.emptyIcon}>👥</Text>
                 <Text style={styles.emptyTitle}>No groups yet</Text>
                 <Text style={styles.emptyText}>
-                  Create a group or join one with an invite code to start riding together
+                  Create or join a group to start riding together
                 </Text>
               </View>
             </Card>
