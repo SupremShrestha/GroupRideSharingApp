@@ -1,5 +1,8 @@
-import Mapbox from '@rnmapbox/maps';
+import { Platform } from 'react-native';
+import MapboxMaps from '@rnmapbox/maps';
 
-Mapbox.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '');
+if (Platform.OS !== 'web') {
+  MapboxMaps.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '');
+}
 
-export { Mapbox };
+export const Mapbox = MapboxMaps;

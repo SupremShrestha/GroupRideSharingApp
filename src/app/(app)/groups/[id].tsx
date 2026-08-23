@@ -54,48 +54,12 @@ export default function GroupDetailScreen() {
     mutationFn: async () => {
       if (!user || !id) throw new Error('Missing user or group');
 
-      // Check for an already-active ride in this group first
-      const { data: existingRide } = await supabase
-        .from('rides')
-        .select('*')
-        .eq('group_id', id)
-        .eq('status', 'active')
-        .maybeSingle();
+      const { data, error } = await supabase.rpc('start_or_join_ride', {
+        _group_id: id,
+      });
 
-      if (existingRide) {
-        // Join the existing ride instead of creating a duplicate
-        const { error: joinError } = await supabase
-          .from('ride_participants')
-          .upsert(
-            { ride_id: existingRide.id, user_id: user.id },
-            { onConflict: 'ride_id,user_id', ignoreDuplicates: true }
-          );
-
-        if (joinError) throw joinError;
-        return existingRide;
-      }
-
-      const { data: ride, error: rideError } = await supabase
-        .from('rides')
-        .insert({
-          group_id: id,
-          name: `Ride ${new Date().toLocaleDateString()}`,
-          status: 'active',
-          started_by: user.id,
-          started_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (rideError) throw rideError;
-
-      const { error: joinError } = await supabase
-        .from('ride_participants')
-        .insert({ ride_id: ride.id, user_id: user.id });
-
-      if (joinError) throw joinError;
-
-      return ride;
+      if (error) throw error;
+      return data;
     },
     onSuccess: ride => {
       queryClient.invalidateQueries({ queryKey: ['rides'] });
