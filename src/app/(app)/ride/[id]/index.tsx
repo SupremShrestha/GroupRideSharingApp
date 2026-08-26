@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, Link } from 'expo-router';
 import { Mapbox } from '@/lib/mapbox';
 import { Button } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
@@ -32,8 +32,9 @@ export default function RideMapScreen() {
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
+  const latestPositionRef = useRef<Location.LocationObject | null>(null);
+  const broadcastIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Request permission on mount
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -44,8 +45,6 @@ export default function RideMapScreen() {
     })();
   }, []);
 
-  // Set up the realtime channel for this ride (join regardless of sharing state,
-  // so we can see others even before we start sharing ourselves)
   useEffect(() => {
     if (!id || !user) return;
 
@@ -55,7 +54,7 @@ export default function RideMapScreen() {
 
     channel.on('broadcast', { event: 'location' }, ({ payload }) => {
       const loc = payload as ParticipantLocation;
-      if (loc.user_id === user.id) return; // ignore our own broadcasts
+      if (loc.user_id === user.id) return;
       setParticipants(prev => ({ ...prev, [loc.user_id]: loc }));
     });
 
@@ -88,7 +87,6 @@ export default function RideMapScreen() {
     };
   }, [id, user]);
 
-  // Drop stale participants (no update in STALE_THRESHOLD_MS)
   useEffect(() => {
     const interval = setInterval(() => {
       setParticipants(prev => {
@@ -111,49 +109,63 @@ export default function RideMapScreen() {
     const subscription = await Location.watchPositionAsync(
       {
         accuracy: Location.Accuracy.High,
-        timeInterval: BROADCAST_INTERVAL_MS,
-        distanceInterval: 5,
+        timeInterval: 2000,
+        distanceInterval: 0,
       },
       position => {
-        const payload: ParticipantLocation = {
-          user_id: user.id,
-          username: user.username,
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          updated_at: Date.now(),
-        };
-
-        channelRef.current?.send({
-          type: 'broadcast',
-          event: 'location',
-          payload,
-        });
-
-        // Also persist to the locations table for ride history
-        supabase
-          .from('locations')
-          .insert({
-            ride_id: id,
-            user_id: user.id,
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy,
-            speed: position.coords.speed,
-            heading: position.coords.heading,
-          })
-          .then(({ error }) => {
-            if (error) console.error('Error saving location:', error);
-          });
+        latestPositionRef.current = position;
       }
     );
 
     locationSubscriptionRef.current = subscription;
+
+    const broadcastInterval = setInterval(() => {
+      const position = latestPositionRef.current;
+      if (!position) return;
+
+      const payload: ParticipantLocation = {
+        user_id: user.id,
+        username: user.username,
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        updated_at: Date.now(),
+      };
+
+      channelRef.current?.send({
+        type: 'broadcast',
+        event: 'location',
+        payload,
+      });
+
+      supabase
+        .from('locations')
+        .insert({
+          ride_id: id,
+          user_id: user.id,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          speed: position.coords.speed,
+          heading: position.coords.heading,
+        })
+        .then(({ error }) => {
+          if (error) console.error('Error saving location:', error);
+        });
+    }, BROADCAST_INTERVAL_MS);
+
+    broadcastIntervalRef.current = broadcastInterval;
     setIsSharing(true);
   }, [id, user]);
 
   const stopSharing = useCallback(() => {
     locationSubscriptionRef.current?.remove();
     locationSubscriptionRef.current = null;
+
+    if (broadcastIntervalRef.current) {
+      clearInterval(broadcastIntervalRef.current);
+      broadcastIntervalRef.current = null;
+    }
+
     setIsSharing(false);
 
     if (user) {
@@ -168,6 +180,9 @@ export default function RideMapScreen() {
   useEffect(() => {
     return () => {
       locationSubscriptionRef.current?.remove();
+      if (broadcastIntervalRef.current) {
+        clearInterval(broadcastIntervalRef.current);
+      }
       if (isSharing && user) {
         channelRef.current?.send({
           type: 'broadcast',
@@ -213,6 +228,14 @@ export default function RideMapScreen() {
         ))}
       </Mapbox.MapView>
 
+      <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
+        <Link href={`/(app)/ride/${id}/chat`} asChild>
+          <Pressable style={styles.chatButton}>
+            <Text style={styles.chatButtonText}>💬 Chat</Text>
+          </Pressable>
+        </Link>
+      </SafeAreaView>
+
       <View style={styles.overlay}>
         <View style={styles.statusPill}>
           <View style={[styles.statusDot, isSharing && styles.statusDotActive]} />
@@ -241,6 +264,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 24,
   },
+  chatButton: {
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 20,
+    elevation: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+  },
+  chatButtonText: { color: '#1C1C1E', fontSize: 15, fontWeight: '600' },
   container: { flex: 1 },
   errorText: { color: '#8E8E93', fontSize: 16, textAlign: 'center' },
   map: { flex: 1 },
@@ -282,4 +317,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   statusText: { color: '#1C1C1E', fontSize: 13, fontWeight: '500' },
+  topBar: {
+    padding: 16,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
 });
