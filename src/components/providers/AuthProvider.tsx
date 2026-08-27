@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useEffect, useCallback } from 'react';
-import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/lib/store';
 import { Profile } from '@/types';
@@ -158,7 +157,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [setLoading, storeSignOut]);
 
   const refreshSession = useCallback(async () => {
-    const { data, error } = await supabase.auth.refreshSession();
+    const { error } = await supabase.auth.refreshSession();
     if (error) {
       console.error('Session refresh error:', error);
     }

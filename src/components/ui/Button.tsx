@@ -1,12 +1,5 @@
 import React from 'react';
-import {
-  TouchableOpacity,
-  Text,
-  StyleSheet,
-  ViewStyle,
-  TextStyle,
-  ActivityIndicator,
-} from 'react-native';
+import { TouchableOpacity, Text, ViewStyle, TextStyle, ActivityIndicator } from 'react-native';
 
 interface ButtonProps extends React.TouchableOpacityProps {
   title: string;
@@ -91,7 +84,7 @@ export const Button = React.forwardRef<TouchableOpacity, ButtonProps>(
       leftIcon,
       rightIcon,
       style,
-      children,
+      children: _children,
       ...props
     },
     ref

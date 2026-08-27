@@ -1,13 +1,5 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Alert,
-} from 'react-native';
+import { View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { Button, Input, Card } from '@/components/ui';
 import { useAuth, useAuthLoading } from '@/components/providers/AuthProvider';
@@ -123,10 +115,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     marginTop: 32,
-  },
-  footerText: {
-    color: '#8E8E93',
-    fontSize: 16,
   },
   formCard: {
     alignSelf: 'center',
