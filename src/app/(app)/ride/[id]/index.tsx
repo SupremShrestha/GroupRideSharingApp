@@ -1,10 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Pressable, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ActivityIndicator,
+  Pressable,
+  Alert,
+  FlatList,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, Link } from 'expo-router';
 import { Mapbox } from '@/lib/mapbox';
-import { Button } from '@/components/ui';
+import { Button, Card } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
 import { useAuthUser } from '@/components/providers/AuthProvider';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -17,10 +25,130 @@ interface ParticipantLocation {
   updated_at: number;
 }
 
+interface RideDetails {
+  id: string;
+  name: string;
+  status: string;
+  started_by: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  group_name: string;
+}
+
+interface RideParticipantSummary {
+  user_id: string;
+  username: string;
+  joined_at: string;
+}
+
 const BROADCAST_INTERVAL_MS = 4000;
 const STALE_THRESHOLD_MS = 20000;
 
-export default function RideMapScreen() {
+function formatDuration(start: string | null, end: string | null): string {
+  if (!start || !end) return '—';
+  const ms = new Date(end).getTime() - new Date(start).getTime();
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remMinutes = minutes % 60;
+  return `${hours}h ${remMinutes}m`;
+}
+
+function formatDateTime(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
+
+// --- Summary view for completed rides ---
+
+function RideSummaryScreen({ ride }: { ride: RideDetails }) {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const [participants, setParticipants] = useState<RideParticipantSummary[]>([]);
+
+  useEffect(() => {
+    if (!id) return;
+
+    interface ParticipantRow {
+      user_id: string;
+      joined_at: string;
+      profiles: { username: string };
+    }
+
+    supabase
+      .from('ride_participants')
+      .select('user_id, joined_at, profiles(username)')
+      .eq('ride_id', id)
+      .then(({ data, error }) => {
+        if (error) return;
+        const rows = (data ?? []) as unknown as ParticipantRow[];
+        setParticipants(
+          rows.map(row => ({
+            user_id: row.user_id,
+            joined_at: row.joined_at,
+            username: row.profiles?.username,
+          }))
+        );
+      });
+  }, [id]);
+
+  return (
+    <SafeAreaView style={styles.summaryContainer} edges={['bottom']}>
+      <FlatList
+        data={participants}
+        keyExtractor={item => item.user_id}
+        contentContainerStyle={styles.summaryContent}
+        ListHeaderComponent={
+          <>
+            <View style={styles.summaryHeader}>
+              <View style={styles.endedBadge}>
+                <Text style={styles.endedBadgeText}>ENDED</Text>
+              </View>
+              <Text style={styles.summaryTitle}>{ride.name}</Text>
+              <Text style={styles.summarySubtitle}>{ride.group_name}</Text>
+            </View>
+
+            <Card style={styles.statsCard} padding="lg">
+              <View style={styles.statRow}>
+                <Text style={styles.statLabel}>Started</Text>
+                <Text style={styles.statValue}>{formatDateTime(ride.started_at)}</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statLabel}>Ended</Text>
+                <Text style={styles.statValue}>{formatDateTime(ride.ended_at)}</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statLabel}>Duration</Text>
+                <Text style={styles.statValue}>
+                  {formatDuration(ride.started_at, ride.ended_at)}
+                </Text>
+              </View>
+            </Card>
+
+            <Link href={`/(app)/ride/${id}/chat`} asChild>
+              <Pressable style={styles.viewChatButton}>
+                <Text style={styles.viewChatButtonText}>💬 View Chat History</Text>
+              </Pressable>
+            </Link>
+
+            <Text style={styles.sectionTitle}>Participants</Text>
+          </>
+        }
+        renderItem={({ item }) => (
+          <Card style={styles.participantCard} padding="md">
+            <Text style={styles.participantName}>@{item.username}</Text>
+          </Card>
+        )}
+      />
+    </SafeAreaView>
+  );
+}
+
+// --- Live map view for active rides ---
+
+function RideLiveMapScreen({ ride, onEnded }: { ride: RideDetails; onEnded: () => void }) {
   const { id } = useLocalSearchParams<{ id: string }>();
   const user = useAuthUser();
 
@@ -29,8 +157,6 @@ export default function RideMapScreen() {
   const [isSharing, setIsSharing] = useState(false);
   const [participants, setParticipants] = useState<Record<string, ParticipantLocation>>({});
   const [onlineCount, setOnlineCount] = useState(0);
-  const [rideStatus, setRideStatus] = useState<string | null>(null);
-  const [startedBy, setStartedBy] = useState<string | null>(null);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
@@ -46,20 +172,6 @@ export default function RideMapScreen() {
       }
     })();
   }, []);
-
-  useEffect(() => {
-    if (!id) return;
-    supabase
-      .from('rides')
-      .select('status, started_by')
-      .eq('id', id)
-      .single()
-      .then(({ data, error }) => {
-        if (error) return;
-        setRideStatus(data.status);
-        setStartedBy(data.started_by);
-      });
-  }, [id]);
 
   const endRide = useCallback(async () => {
     if (!id) return;
@@ -78,11 +190,11 @@ export default function RideMapScreen() {
             Alert.alert('Error', error.message);
             return;
           }
-          setRideStatus('completed');
+          onEnded();
         },
       },
     ]);
-  }, [id]);
+  }, [id, onEnded]);
 
   useEffect(() => {
     if (!id || !user) return;
@@ -269,7 +381,7 @@ export default function RideMapScreen() {
 
       <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
         <View style={styles.topBarRow}>
-          {startedBy === user?.id && rideStatus === 'active' && (
+          {ride.started_by === user?.id && (
             <Pressable style={styles.endButton} onPress={endRide}>
               <Text style={styles.endButtonText}>End Ride</Text>
             </Pressable>
@@ -290,21 +402,76 @@ export default function RideMapScreen() {
           </Text>
         </View>
 
-        {rideStatus === 'completed' ? (
-          <View style={styles.completedBanner}>
-            <Text style={styles.completedBannerText}>This ride has ended</Text>
-          </View>
-        ) : (
-          <Button
-            title={isSharing ? 'Stop Sharing' : 'Start Sharing Location'}
-            variant={isSharing ? 'danger' : 'primary'}
-            size="lg"
-            fullWidth
-            onPress={isSharing ? stopSharing : startSharing}
-          />
-        )}
+        <Button
+          title={isSharing ? 'Stop Sharing' : 'Start Sharing Location'}
+          variant={isSharing ? 'danger' : 'primary'}
+          size="lg"
+          fullWidth
+          onPress={isSharing ? stopSharing : startSharing}
+        />
       </View>
     </View>
+  );
+}
+
+// --- Top-level: fetches ride status and branches ---
+
+export default function RideScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const [ride, setRide] = useState<RideDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!id) return;
+
+    interface RideRow {
+      id: string;
+      name: string;
+      status: string;
+      started_by: string | null;
+      started_at: string | null;
+      ended_at: string | null;
+      groups: { name: string };
+    }
+
+    supabase
+      .from('rides')
+      .select('id, name, status, started_by, started_at, ended_at, groups(name)')
+      .eq('id', id)
+      .single()
+      .then(({ data, error }) => {
+        setLoading(false);
+        if (error || !data) return;
+        const row = data as unknown as RideRow;
+        setRide({
+          id: row.id,
+          name: row.name,
+          status: row.status,
+          started_by: row.started_by,
+          started_at: row.started_at,
+          ended_at: row.ended_at,
+          group_name: row.groups?.name,
+        });
+      });
+  }, [id]);
+
+  if (loading || !ride) {
+    return (
+      <SafeAreaView style={styles.centered}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </SafeAreaView>
+    );
+  }
+
+  if (ride.status === 'completed') {
+    return <RideSummaryScreen ride={ride} />;
+  }
+
+  return (
+    <RideLiveMapScreen
+      ride={ride}
+      onEnded={() => setRide(prev => (prev ? { ...prev, status: 'completed' } : prev))}
+    />
   );
 }
 
@@ -328,13 +495,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   chatButtonText: { color: '#1C1C1E', fontSize: 15, fontWeight: '600' },
-  completedBanner: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    borderRadius: 12,
-    paddingVertical: 14,
-  },
-  completedBannerText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   container: { flex: 1 },
   endButton: {
     backgroundColor: 'rgba(255,59,48,0.95)',
@@ -348,6 +508,15 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   endButtonText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  endedBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#E5E5EA',
+    borderRadius: 8,
+    marginBottom: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  endedBadgeText: { color: '#8E8E93', fontSize: 11, fontWeight: '700' },
   errorText: { color: '#8E8E93', fontSize: 16, textAlign: 'center' },
   map: { flex: 1 },
   marker: {
@@ -368,6 +537,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 16,
   },
+  participantCard: { backgroundColor: '#fff', marginBottom: 8 },
+  participantName: { color: '#1C1C1E', fontSize: 16, fontWeight: '500' },
+  sectionTitle: { color: '#1C1C1E', fontSize: 20, fontWeight: '600', marginBottom: 16 },
+  statLabel: { color: '#8E8E93', fontSize: 14 },
+  statRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  statValue: { color: '#1C1C1E', fontSize: 14, fontWeight: '600' },
+  statsCard: { backgroundColor: '#fff', gap: 12, marginBottom: 16 },
   statusDot: {
     backgroundColor: '#8E8E93',
     borderRadius: 4,
@@ -388,6 +564,11 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   statusText: { color: '#1C1C1E', fontSize: 13, fontWeight: '500' },
+  summaryContainer: { backgroundColor: '#F2F2F7', flex: 1 },
+  summaryContent: { padding: 24, paddingBottom: 100 },
+  summaryHeader: { marginBottom: 24 },
+  summarySubtitle: { color: '#8E8E93', fontSize: 15, marginTop: 4 },
+  summaryTitle: { color: '#1C1C1E', fontSize: 28, fontWeight: '700' },
   topBar: {
     left: 0,
     padding: 16,
@@ -400,4 +581,12 @@ const styles = StyleSheet.create({
     gap: 8,
     justifyContent: 'flex-end',
   },
+  viewChatButton: {
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginBottom: 32,
+    paddingVertical: 14,
+  },
+  viewChatButtonText: { color: '#007AFF', fontSize: 15, fontWeight: '600' },
 });

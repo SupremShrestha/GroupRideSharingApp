@@ -7,16 +7,16 @@ import { Card, Button } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
 import { useAuthUser } from '@/components/providers/AuthProvider';
 
-interface MemberRow {
-  user_id: string;
-  role: 'admin' | 'member';
-  profiles: { username: string };
-}
-
 interface Member {
   user_id: string;
   role: 'admin' | 'member';
   username: string;
+}
+
+interface MemberRow {
+  user_id: string;
+  role: 'admin' | 'member';
+  profiles: { username: string };
 }
 
 export default function GroupDetailScreen() {
@@ -34,6 +34,20 @@ export default function GroupDetailScreen() {
     },
   });
 
+  const { data: activeRide } = useQuery({
+    queryKey: ['active-ride', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('rides')
+        .select('id, name, destination_name')
+        .eq('group_id', id)
+        .eq('status', 'active')
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+
   const { data: members } = useQuery({
     queryKey: ['group-members', id],
     queryFn: async (): Promise<Member[]> => {
@@ -42,7 +56,7 @@ export default function GroupDetailScreen() {
         .select('user_id, role, profiles(username)')
         .eq('group_id', id);
       if (error) throw error;
-      return ((data ?? []) as MemberRow[]).map(row => ({
+      return ((data ?? []) as unknown as MemberRow[]).map(row => ({
         user_id: row.user_id,
         role: row.role,
         username: row.profiles.username,
@@ -50,14 +64,12 @@ export default function GroupDetailScreen() {
     },
   });
 
-  const startRide = useMutation({
+  const joinRide = useMutation({
     mutationFn: async () => {
       if (!user || !id) throw new Error('Missing user or group');
-
       const { data, error } = await supabase.rpc('start_or_join_ride', {
         _group_id: id,
       });
-
       if (error) throw error;
       return data;
     },
@@ -81,16 +93,37 @@ export default function GroupDetailScreen() {
               <Text style={styles.inviteCode}>Code: {group?.invite_code}</Text>
             </View>
 
-            <Button
-              title="Start Ride"
-              variant="primary"
-              size="lg"
-              fullWidth
-              loading={startRide.isPending}
-              disabled={startRide.isPending}
-              onPress={() => startRide.mutate()}
-              style={styles.startButton}
-            />
+            {activeRide ? (
+              <>
+                <View style={styles.activeRideBanner}>
+                  <Text style={styles.activeRideText}>🔴 Ride in progress</Text>
+                  {activeRide.destination_name && (
+                    <Text style={styles.activeRideDestination}>
+                      → {activeRide.destination_name}
+                    </Text>
+                  )}
+                </View>
+                <Button
+                  title="Join Ride"
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  loading={joinRide.isPending}
+                  disabled={joinRide.isPending}
+                  onPress={() => joinRide.mutate()}
+                  style={styles.startButton}
+                />
+              </>
+            ) : (
+              <Button
+                title="Start Ride"
+                variant="primary"
+                size="lg"
+                fullWidth
+                onPress={() => router.push(`/(app)/groups/${id}/start-ride`)}
+                style={styles.startButton}
+              />
+            )}
 
             <Text style={styles.sectionTitle}>Members</Text>
           </>
@@ -113,6 +146,14 @@ export default function GroupDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  activeRideBanner: {
+    backgroundColor: '#FFF5F5',
+    borderRadius: 12,
+    marginBottom: 12,
+    padding: 14,
+  },
+  activeRideDestination: { color: '#8E8E93', fontSize: 13, marginTop: 4 },
+  activeRideText: { color: '#FF3B30', fontSize: 15, fontWeight: '600' },
   adminBadge: {
     backgroundColor: '#E8F2FF',
     borderRadius: 6,
