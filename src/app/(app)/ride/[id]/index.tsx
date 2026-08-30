@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, Link } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Mapbox } from '@/lib/mapbox';
 import { Button, Card } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
@@ -33,12 +34,28 @@ interface RideDetails {
   started_at: string | null;
   ended_at: string | null;
   group_name: string;
+  destination_name: string | null;
+  destination_lat: number | null;
+  destination_lng: number | null;
 }
 
 interface RideParticipantSummary {
   user_id: string;
   username: string;
   joined_at: string;
+}
+
+interface RideRow {
+  id: string;
+  name: string;
+  status: string;
+  started_by: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  destination_name: string | null;
+  destination_lat: number | null;
+  destination_lng: number | null;
+  groups: { name: string };
 }
 
 const BROADCAST_INTERVAL_MS = 4000;
@@ -111,6 +128,12 @@ function RideSummaryScreen({ ride }: { ride: RideDetails }) {
             </View>
 
             <Card style={styles.statsCard} padding="lg">
+              {ride.destination_name && (
+                <View style={styles.statRow}>
+                  <Text style={styles.statLabel}>Destination</Text>
+                  <Text style={styles.statValue}>{ride.destination_name}</Text>
+                </View>
+              )}
               <View style={styles.statRow}>
                 <Text style={styles.statLabel}>Started</Text>
                 <Text style={styles.statValue}>{formatDateTime(ride.started_at)}</Text>
@@ -199,42 +222,58 @@ function RideLiveMapScreen({ ride, onEnded }: { ride: RideDetails; onEnded: () =
   useEffect(() => {
     if (!id || !user) return;
 
-    const channel = supabase.channel(`ride:${id}`, {
-      config: { presence: { key: user.id } },
-    });
+    let cancelled = false;
 
-    channel.on('broadcast', { event: 'location' }, ({ payload }) => {
-      const loc = payload as ParticipantLocation;
-      if (loc.user_id === user.id) return;
-      setParticipants(prev => ({ ...prev, [loc.user_id]: loc }));
-    });
-
-    channel.on('broadcast', { event: 'stop_sharing' }, ({ payload }) => {
-      const { user_id } = payload as { user_id: string };
-      if (user_id === user.id) return;
-      setParticipants(prev => {
-        const next = { ...prev };
-        delete next[user_id];
-        return next;
-      });
-    });
-
-    channel.on('presence', { event: 'sync' }, () => {
-      const state = channel.presenceState();
-      setOnlineCount(Object.keys(state).length);
-    });
-
-    channel.subscribe(async status => {
-      if (status === 'SUBSCRIBED') {
-        await channel.track({ user_id: user.id, username: user.username });
+    const setup = async () => {
+      if (channelRef.current) {
+        await supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
       }
-    });
 
-    channelRef.current = channel;
+      if (cancelled) return;
+
+      const channel = supabase.channel(`ride:${id}`, {
+        config: { presence: { key: user.id } },
+      });
+
+      channel.on('broadcast', { event: 'location' }, ({ payload }) => {
+        const loc = payload as ParticipantLocation;
+        if (loc.user_id === user.id) return;
+        setParticipants(prev => ({ ...prev, [loc.user_id]: loc }));
+      });
+
+      channel.on('broadcast', { event: 'stop_sharing' }, ({ payload }) => {
+        const { user_id } = payload as { user_id: string };
+        if (user_id === user.id) return;
+        setParticipants(prev => {
+          const next = { ...prev };
+          delete next[user_id];
+          return next;
+        });
+      });
+
+      channel.on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        setOnlineCount(Object.keys(state).length);
+      });
+
+      channel.subscribe(async status => {
+        if (status === 'SUBSCRIBED' && !cancelled) {
+          await channel.track({ user_id: user.id, username: user.username });
+        }
+      });
+
+      channelRef.current = channel;
+    };
+
+    setup();
 
     return () => {
-      supabase.removeChannel(channel);
-      channelRef.current = null;
+      cancelled = true;
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
     };
   }, [id, user]);
 
@@ -366,6 +405,17 @@ function RideLiveMapScreen({ ride, onEnded }: { ride: RideDetails; onEnded: () =
         <Mapbox.Camera followUserLocation followZoomLevel={15} />
         <Mapbox.UserLocation visible showsUserHeadingIndicator />
 
+        {ride.destination_lat != null && ride.destination_lng != null && (
+          <Mapbox.PointAnnotation
+            id="destination"
+            coordinate={[ride.destination_lng, ride.destination_lat]}
+          >
+            <View style={styles.destinationMarker}>
+              <Text style={styles.destinationMarkerText}>🏁</Text>
+            </View>
+          </Mapbox.PointAnnotation>
+        )}
+
         {Object.values(participants).map(p => (
           <Mapbox.PointAnnotation
             key={p.user_id}
@@ -392,6 +442,11 @@ function RideLiveMapScreen({ ride, onEnded }: { ride: RideDetails; onEnded: () =
             </Pressable>
           </Link>
         </View>
+        {ride.destination_name && (
+          <View style={styles.destinationPill}>
+            <Text style={styles.destinationPillText}>🏁 {ride.destination_name}</Text>
+          </View>
+        )}
       </SafeAreaView>
 
       <View style={styles.overlay}>
@@ -421,22 +476,13 @@ export default function RideScreen() {
   const [ride, setRide] = useState<RideDetails | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const fetchRide = useCallback(() => {
     if (!id) return;
-
-    interface RideRow {
-      id: string;
-      name: string;
-      status: string;
-      started_by: string | null;
-      started_at: string | null;
-      ended_at: string | null;
-      groups: { name: string };
-    }
-
     supabase
       .from('rides')
-      .select('id, name, status, started_by, started_at, ended_at, groups(name)')
+      .select(
+        'id, name, status, started_by, started_at, ended_at, destination_name, destination_lat, destination_lng, groups(name)'
+      )
       .eq('id', id)
       .single()
       .then(({ data, error }) => {
@@ -451,9 +497,18 @@ export default function RideScreen() {
           started_at: row.started_at,
           ended_at: row.ended_at,
           group_name: row.groups?.name,
+          destination_name: row.destination_name,
+          destination_lat: row.destination_lat,
+          destination_lng: row.destination_lng,
         });
       });
   }, [id]);
+
+  useEffect(() => {
+    fetchRide();
+  }, [fetchRide]);
+
+  useFocusEffect(fetchRide);
 
   if (loading || !ride) {
     return (
@@ -496,6 +551,26 @@ const styles = StyleSheet.create({
   },
   chatButtonText: { color: '#1C1C1E', fontSize: 15, fontWeight: '600' },
   container: { flex: 1 },
+  destinationMarker: {
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderColor: '#1C1C1E',
+    borderRadius: 18,
+    borderWidth: 2,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  destinationMarkerText: { fontSize: 18 },
+  destinationPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 16,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  destinationPillText: { color: '#1C1C1E', fontSize: 13, fontWeight: '600' },
   endButton: {
     backgroundColor: 'rgba(255,59,48,0.95)',
     borderRadius: 20,
