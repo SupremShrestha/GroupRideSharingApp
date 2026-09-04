@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, Link } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
 import { Mapbox } from '@/lib/mapbox';
 import { Button, Card } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
