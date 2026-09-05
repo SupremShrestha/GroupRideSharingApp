@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, Button } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
@@ -34,7 +34,7 @@ export default function GroupDetailScreen() {
     },
   });
 
-  const { data: activeRide } = useQuery({
+  const { data: activeRide, refetch: refetchActiveRide } = useQuery({
     queryKey: ['active-ride', id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -47,6 +47,12 @@ export default function GroupDetailScreen() {
       return data;
     },
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      refetchActiveRide();
+    }, [refetchActiveRide])
+  );
 
   const { data: members } = useQuery({
     queryKey: ['group-members', id],
@@ -75,6 +81,7 @@ export default function GroupDetailScreen() {
     },
     onSuccess: ride => {
       queryClient.invalidateQueries({ queryKey: ['rides'] });
+      queryClient.invalidateQueries({ queryKey: ['active-ride', id] });
       router.push(`/(app)/ride/${ride.id}`);
     },
     onError: (err: Error) => Alert.alert('Error', err.message),
@@ -92,7 +99,6 @@ export default function GroupDetailScreen() {
               <Text style={styles.groupName}>{group?.name}</Text>
               <Text style={styles.inviteCode}>Code: {group?.invite_code}</Text>
             </View>
-
             {activeRide ? (
               <>
                 <View style={styles.activeRideBanner}>
@@ -124,7 +130,6 @@ export default function GroupDetailScreen() {
                 style={styles.startButton}
               />
             )}
-
             <Text style={styles.sectionTitle}>Members</Text>
           </>
         }

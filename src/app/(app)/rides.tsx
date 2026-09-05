@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card } from '@/components/ui';
-import { Link } from 'expo-router';
+import { Link, useFocusEffect } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthUser } from '@/components/providers/AuthProvider';
@@ -42,9 +42,7 @@ export default function RidesScreen() {
         .select('rides(id, name, status, started_at, groups(name))')
         .eq('user_id', user!.id)
         .order('joined_at', { ascending: false });
-
       if (error) throw error;
-
       return ((data ?? []) as RideParticipantRow[]).map(row => ({
         id: row.rides.id,
         name: row.rides.name,
@@ -54,6 +52,12 @@ export default function RidesScreen() {
       }));
     },
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
