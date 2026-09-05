@@ -510,6 +510,30 @@ export default function RideScreen() {
 
   useFocusEffect(fetchRide);
 
+  // Listen for realtime status changes (e.g. someone else ending the ride)
+  // so this device updates immediately without needing to navigate away and back.
+  useEffect(() => {
+    if (!id) return;
+
+    const channel = supabase
+      .channel(`ride-status:${id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'rides', filter: `id=eq.${id}` },
+        payload => {
+          const updated = payload.new as { status: string; ended_at: string | null };
+          setRide(prev =>
+            prev ? { ...prev, status: updated.status, ended_at: updated.ended_at } : prev
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id]);
+
   if (loading || !ride) {
     return (
       <SafeAreaView style={styles.centered}>
